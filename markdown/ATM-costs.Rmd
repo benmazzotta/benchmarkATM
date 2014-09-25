@@ -1,0 +1,95 @@
+---
+title: "ATM Cost Analysis"
+author: "Ben Mazzotta"
+date: "25 September 2014"
+output: pdf_document
+header-includes:
+- \usepackage{euler}
+- \usepackage{charter}
+---
+
+This paper outlines the variance in ATM costs worldwide. Absent primary data on the cost to maintain ATM fleets in a number of countries, we estimate from secondary sources. The key data sources present in this report are:
+
+* Number of ATMs in each country.
+* Maintenance cost of an ATM.
+* Cost of funds in the ATM.
+* Capital expense for the ATM itself.
+
+The following sections treat each cost in turn; followed by an explicit model for how the costs were calculated.
+
+## ATM count
+
+The World Bank estimates ATMs per capita, population and GDP per capita.
+
+```{r maintenancecosts, fig.width=10, fig.height=6.1, echo=FALSE, warning=FALSE}
+load("../data/current.Rdata")
+require(ggplot2)
+require(data.table)
+ls()
+
+## ATMs in each country
+##      Join the ATM density per capita to the population data
+ATMcost <- atmcap[,c("Country.Name","Country.Code", "estimate"), with=F]
+setnames(ATMcost, "estimate", "ATMper100k")
+
+setkey(ATMcost, Country.Code)
+setkey(pop, Country.Code)
+ATMcost <- ATMcost[pop,]
+ATMcost <- ATMcost[,.SD, .SDcols=c("Country.Code","Country.Name","ATMper100k","estimate")]
+##        Rename for convenience
+setnames(ATMcost, "estimate","population")
+##        Calculate ATMs, total in the country
+ATMcost[,ATMs:=ATMper100k*population*10^-5]
+##        Summarize
+summary(ATMcost)
+
+##        Merge in the GDP per capita 5-year average
+gdpmerge <- gdpcap[,.SD, .SDcols=c("Country.Code","estimate")]
+setnames(gdpmerge,"estimate","GDPpercap")
+setkey(gdpmerge, "Country.Code")
+ATMcost <- ATMcost[gdpmerge]
+
+options("scipen"=5)
+
+qplot(ATMper100k, GDPpercap, data=ATMcost, label=Country.Code, log="xy", geom="text")+labs(
+  title="ATM density versus GDP per capita \n Source: World Bank", x="ATMs per hundred thousand population", y="Gross domestic product per capita in US dollars at purchasing power parity (PPP)")
+
+```
+
+## Maintenance cost
+
+
+
+## Cost of funds
+The cost of funds is calculated on a per-machine basis. The per-machine cost is a simple ratio of the cost of funds in the United States to the cost of funds in country $i$. 
+
+```{r costoffunds}
+
+
+
+```
+
+
+## Capital expense
+hello
+
+## Model
+
+ATM average monthly costs in the United States, $c_\omega$ can be decomposed into the maintenance costs, $c_m$, cost of funds, $c_f$, and capital expense, $c_k$.
+
+$$ c_\omega = c_m + c_i + c_k $$
+
+Those cost shares are calibrated using a 2006 Dove Consulting study, reported by the Texas chapter of the American Bankers Association in 2011.
+
+Item  | Share
+--- | ---
+Operating expense | 75.3%
+Cost of funds | 6.3%
+Depreciation | 18.4%
+
+Operating expenses are assumed to be proportional to the price level in each country. The components of maintenance include labor, telecommunications, back office processing, rent and vehicle costs. In short, they are a broad basket of goods and services unlikely to correlate with any specific price index such as headline inflation. Instead we choose the ratio of PPP exchange rates to market exchange rates. The World Bank indicator `Price level ratio` is available [here](http://data.worldbank.org/indicator/PA.NUS.PPPC.RF).\footnote{World Bank. World Development Indicators. Available at \url{http://data.worldbank.org/indicator/PA.NUS.PPPC.RF}}
+
+
+---
+
+> Ben Mazzotta is a postdoc at the Institute for Business in the Global Context ([IBGC](http://fletcher.tufts.edu/ibgc)).
