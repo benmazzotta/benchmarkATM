@@ -130,21 +130,57 @@ eurointerest <- interest["Euro Area",discount][[2]]
 #       Replace missing values w/ eurozone discount rate
 interest[Country %in% eurozone & is.na(discount), discount:=eurointerest]
 
+
+
+# #####
+# West African monetary union similarly misses discount rates
+# Lets add those back in ASAP
+
+
+# #####
+# Then drop monetary union entries in the interest database. They mess up joins later.
+
+
+# Which countries still missing?
+#       Use the discount when available. When not, adjust for different variances of interest series.
+interest[,ratiodiscount := discount / interest["United States", discount][[2]]]
+interest[,ratiolending := lending / interest["United States", lending][[2]]]
+interest[,ratiomoney := moneymarket / interest["United States", moneymarket][[2]]]
+
 #       US discount rate is the numeraire
-numeraire <- interest["United States", discount][[2]]
-interest[,estimate:=discount/numeraire]
+interest[,estimate := ratiodiscount]
+summary(interest)
+
+#         91 missing observations. We can do better.
+sd(interest$ratiodiscount, na.rm=T)
+sd(interest$ratiolending, na.rm=T)
+sd(interest$ratiomoney, na.rm=T)
+
+#         These are factors to correct for the different variance in interest rate levels.
+sd_lenddisc = sd(interest$ratiodiscount, na.rm=T) / sd(interest$ratiolending, na.rm=T)
+sd_moneydisc = sd(interest$ratiodiscount, na.rm=T) / sd(interest$ratiomoney, na.rm=T)
+
+# ## Check that it works; it does.
+# var(interest$ratiodiscount, na.rm=T)
+# var(interest$ratiomoney, na.rm=T)
+# var(interest$ratiolending, na.rm=T)
+# var(interest$ratiomoney * sd_moneydisc, na.rm=T)
+# var(interest$ratiolending * sd_lenddisc, na.rm=T)
+
+
+#       If the discount rate multiplier is unavailable ... 
+#           First try the lending rate
+#           Adjusted for the difference in variance between lending and discount
+interest[is.na(estimate),estimate := ratiolending * sd_lenddisc ]
 summary(interest)
 
 #       If the discount rate multiplier is unavailable ... 
-USmoneyrate <- interest["United States", moneymarket][[2]]
-interest[is.na(estimate),estimate := moneymarket/USmoneyrate]
+#           Next try the moneymarket rate
+#           Similarly adjusted for variance
+interest[is.na(estimate),estimate := ratiomoney * sd_moneydisc]
 summary(interest)
 
-USlendingrate <- interest["United States", lending][[2]]
-interest[is.na(estimate),estimate := lending/USlendingrate]
-summary(interest)
-
-
+rm(list=c("sd_moneydisc","sd_lenddisc","numeraire"))
 
 # #       Verify
 # interest[Country %in% eurozone,]
@@ -160,6 +196,24 @@ gdpcap <- gdpcap[,c(1:4, 54:58), with=F]
 str(gdpcap)
 gdpcap[,estimate:= rowMeans(.SD, na.rm=T), .SDcols=c(5:9)]
 summary(gdpcap)
+
+
+# #####
+# Cleaning the data
+
+# 1. USA has no value for ATMs per capita; thus no total ATMs estimate.
+
+#       Which estimates are also blank?
+write.csv(file="clean-atmspercapita.csv", atmcap[is.na(estimate),.SD, .SDcols=c("Country.Name","Country.Code", "X2012","estimate")])
+
+#       Bahrain, Bermdua, Cuba, Eritrea, Guinea, Gambia, Nifer, Puerto Rico, DPR Korea, Senegal, Somalia, Togo, USA
+#       Fix USA by hand.
+#       EFT Data sheet cited 425k ATMs in 2010; when USA pop was 308.745 million = 137.65 ATM per 100k population.
+
+setkey(atmcap, "Country.Code")
+atmcap["USA",estimate:=137.65]
+summary(atmcap)
+
 
 ## Save workspace to ~/data/current.Rdata
 

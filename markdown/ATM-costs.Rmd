@@ -6,6 +6,7 @@ output: pdf_document
 header-includes:
 - \usepackage{euler}
 - \usepackage{charter}
+- \usepackage{longtable}
 ---
 
 This paper outlines the variance in ATM costs worldwide. Absent primary data on the cost to maintain ATM fleets in a number of countries, we estimate from secondary sources. The key data sources present in this report are:
@@ -21,10 +22,12 @@ The following sections treat each cost in turn; followed by an explicit model fo
 
 The World Bank estimates ATMs per capita, population and GDP per capita.
 
-```{r maintenancecosts, fig.width=10, fig.height=6.1, echo=FALSE, warning=FALSE}
+```{r ATMdensity, fig.width=10, fig.height=6.1, echo=FALSE, warning=FALSE}
 load("../data/current.Rdata")
 require(ggplot2)
 require(data.table)
+require(xtable)
+require(stargazer)
 ls()
 
 ## ATMs in each country
@@ -34,6 +37,7 @@ setnames(ATMcost, "estimate", "ATMper100k")
 
 setkey(ATMcost, Country.Code)
 setkey(pop, Country.Code)
+##      Join national population with ATM costs
 ATMcost <- ATMcost[pop,]
 ATMcost <- ATMcost[,.SD, .SDcols=c("Country.Code","Country.Name","ATMper100k","estimate")]
 ##        Rename for convenience
@@ -42,36 +46,161 @@ setnames(ATMcost, "estimate","population")
 ATMcost[,ATMs:=ATMper100k*population*10^-5]
 ##        Summarize
 summary(ATMcost)
+ATMcost["USA",]
 
 ##        Merge in the GDP per capita 5-year average
-gdpmerge <- gdpcap[,.SD, .SDcols=c("Country.Code","estimate")]
-setnames(gdpmerge,"estimate","GDPpercap")
-setkey(gdpmerge, "Country.Code")
-ATMcost <- ATMcost[gdpmerge]
+setkey(gdpcap, "Country.Code")
+tables()
+ATMcost <- ATMcost[gdpcap[,.SD, .SDcols=c("Country.Code","estimate")],]
+setnames(ATMcost, "estimate","GDPcap")
 
 options("scipen"=5)
 
-qplot(ATMper100k, GDPpercap, data=ATMcost, label=Country.Code, log="xy", geom="text")+labs(
+qplot(ATMper100k, GDPcap, data=ATMcost, label=Country.Code, log="xy", geom="text")+labs(
   title="ATM density versus GDP per capita \n Source: World Bank", x="ATMs per hundred thousand population", y="Gross domestic product per capita in US dollars at purchasing power parity (PPP)")
 
 ```
 
 ## Maintenance cost
 
+Cost of maintenance is assumed proportional to the PPP price level ratio.
+
+```{r costofmaintenance, fig.width=8, fig.height=4.5}
+## Data live in data.table ppplevel
+##      Create a new variable named c_maint
+##      Merge on "Country.Code"
+setkey(ATMcost, "Country.Code"); setkey(ppplevel, "Country.Code")
+
+# ATMcostvars <- names(ATMcost)
+# rm(ATMcostvars)
+tables()
+ATMcost <- ATMcost[ppplevel[,.SD, .SDcols=c("Country.Code","estimate")],]
+setnames(ATMcost, "estimate", "c_maint")
+
+##        Now c_maint gives the PPP level ratio of each country relative to the USA.
+
+tables()
+
+# ##      Check USA is the numeraire
+# ATMcost["United States",]
+summary(ATMcost)
+
+```
+
 
 
 ## Cost of funds
 The cost of funds is calculated on a per-machine basis. The per-machine cost is a simple ratio of the cost of funds in the United States to the cost of funds in country $i$. 
 
-```{r costoffunds}
+```{r costoffunds, echo=FALSE}
+
+## Interest multiplier
+##      Model: Multiply USA interest cost component by interest rate ratio
+
+tables()
+
+setnames(interest,"Country","Country.Name")
+# setkey(ATMcost, Country.Name); setkey(interest, Country.Name)
+
+names(interest)
+require(countrycode)
+interest[,Country.Code := countrycode(interest$Country.Name, "country.name", "wb")]
+interest[Country.Name=="Euro Area", Country.Code:="EMU"]
+interest <- interest[Country.Name != "West African Economic and Monetary Union (WAEMU)",]
+
+dim(interest)
+
+# interest$Country.Name[which(duplicated(interest$Country.Code))]
+
+setkey(ATMcost, Country.Code)
+setkey(interest, Country.Code)
 
 
+# head(interest[,.SD,.SDcols=c("Country.Name","Country.Code","estimate")], 50)
+
+ATMcost <- ATMcost[interest[,.SD,.SDcols=c("Country.Code","estimate")],]
+
+names(ATMcost);names(interest)
+setnames(ATMcost, "estimate", "c_int")
+
+
+tables()
+
+# dim(ATMcost)
+# dim(ppplevel)
+# dim(interest)
+
+summary(ATMcost)
 
 ```
 
 
 ## Capital expense
-hello
+Most market research on national ATM fleets is proprietary. RBR London reports on sales, features, and cost. Those numbers are not useful for this benchmarking exercise unless we can reach an agreement with them to share our models and theirs. 
+
+We treat all fleets as equally expensive on a capital expenditure basis.
+
+
+## Modeled cost
+
+Using the model below, we calculate per-machine maintenance costs worldwide. The basic inputs to the model are USA costs per machine for maintenance, funds, and capital expense. The output is a per-machine cost worldwide; from which we calculate the national cost worldwide. 
+
+
+```{r ATMcostestimates, fig.width=8, fig.height=4.5, warnings=F}
+ATMusa <- data.table("United States", 1290.05, 971.41, 81.27, 237.37)
+names(ATMusa) <- c("Country.Name", "cost_permo", "cost_maint", "cost_funds", "cost_capex")
+attr(ATMusa, "table.label") <- "Cost of a single ATM in the United States in 2012, based on US GDP deflator and ABA Fact Sheet via Texas Bankers Association."
+str(ATMusa)
+
+names(ATMcost)
+
+##    Calculate worldwide per-machine costs of ATM operations
+ATMcost[,gamma_maint := c_maint * ATMusa$cost_maint]
+ATMcost[,gamma_int := c_int * ATMusa$cost_funds]
+ATMcost[,gamma_capex := ATMusa$cost_capex]
+
+
+##    Calculate worldwide per-machine cost
+ATMcost[,gamma_sum := gamma_maint + gamma_int + gamma_capex]
+summary(ATMcost)
+
+qplot(GDPcap, gamma_sum, data=ATMcost, geom="text", label=Country.Code, log="xy")+
+  labs(title="Unit Cost of ATM Maintenance", x="GDP per capita", y="Modeled monthly cost per ATM, USD")
+
+##    Calculate national fleet costs
+ATMcost[,national := gamma_sum * ATMs]
+summary(ATMcost)
+
+qplot(population, national, data=ATMcost, geom="text", label=Country.Code, log="xy")+ 
+  labs(title="National Cost of ATM maintenance", x="Population",y="National cost of ATMs")
+
+```
+
+And here are the rank orderings by cost.
+
+```{r rankorerbycost, results='asis'}
+
+## Rank order by ATM unit cost
+setkey(ATMcost, gamma_sum)
+tab1 <- xtable(ATMcost[!is.na(gamma_sum),c("Country.Name","Country.Code","gamma_sum"), with=F], label="tab:atmunitcost", caption="Unit cost of ATM Operations")
+print(tab1, tabular.environment="longtable")
+
+## Rank order by total fleet cost
+setkey(ATMcost, national)
+tab2 <- xtable(ATMcost[!is.na(national),c("Country.Name","Country.Code","national"),with=F], caption = "Rank order of national ATM fleet cost", label="tab:ranknatlcost")
+print(tab2, tabular.environment="longtable")
+```
+
+## Countries studied
+
+```{r census}
+
+setkey(ATMcost, Country.Name)
+ATMcost$Country.Name
+
+```
+
+
 
 ## Model
 
@@ -88,6 +217,18 @@ Cost of funds | 6.3%
 Depreciation | 18.4%
 
 Operating expenses are assumed to be proportional to the price level in each country. The components of maintenance include labor, telecommunications, back office processing, rent and vehicle costs. In short, they are a broad basket of goods and services unlikely to correlate with any specific price index such as headline inflation. Instead we choose the ratio of PPP exchange rates to market exchange rates. The World Bank indicator `Price level ratio` is available [here](http://data.worldbank.org/indicator/PA.NUS.PPPC.RF).\footnote{World Bank. World Development Indicators. Available at \url{http://data.worldbank.org/indicator/PA.NUS.PPPC.RF}}
+
+### Base year cost
+
+Base year costs were $1194. To calculate 2012 price: use the GDP deflator for 2012. \footnote{Federal Reserve Economic Data (FRED). Gross Domestic Product: Implicit Price Deflator, Index 2009=100, Annual, Seasonally Adjusted. Available at (http://research.stlouisfed.org/fred2)}.
+  
+Measure | Value 
+--- | ---
+Cost in 2007 | $1194
+GDP deflator ratio | 1.0804
+Cost in 2012, estimated | $1290.05
+
+
 
 
 ---
