@@ -130,15 +130,37 @@ eurointerest <- interest["Euro Area",discount][[2]]
 #       Replace missing values w/ eurozone discount rate
 interest[Country %in% eurozone & is.na(discount), discount:=eurointerest]
 
-
-
+# setnames(interest, "Country.Name", "Country")
 # #####
-# West African monetary union similarly misses discount rates
+# West African monetary union similarly misses discount rates. US numeraire has no deposit rate.
+# Eastern Carib monetary union similarly misses discount rates. US numeraire has no deposit rate.
 # Lets add those back in ASAP
 
+waemu <- c("Benin","Burkina Faso","Cote d'Ivoire", "Guinea-Bissau","Mali","Niger","Senegal","Togo")
 
-# #####
-# Then drop monetary union entries in the interest database. They mess up joins later.
+# View(interest[is.na(discount) & is.na(estimate),])
+View(interest[Country %in% waemu, ])
+
+
+##        WAEMU deposit rates are 3.5 across the board.
+##        Where does that put them on the distribution? 
+summary(interest)
+
+##        Rates really aren't all that correlated.
+cor(interest[complete.cases(interest),.SD, .SDcols=c("deposit","discount","lending","moneymarket")])
+
+##        Linear models are pretty useless but plausible.
+lm.discrate01 <- lm(discount~deposit+lending+moneymarket, data=interest)
+summary(lm.discrate01)
+lm.discrate02 <- lm(discount~deposit, data=interest)
+summary(lm.discrate02)
+discount_waemu <- predict(lm.discrate02, interest[Country %in% waemu,], se.fit=TRUE)
+interest[Country %in% waemu, discount := discount_waemu$fit]
+
+
+rm(list=c("lm.discrate01","lm.discrate02","waemu","eurointerest","eurozone","discount_waemu"))
+
+
 
 
 # Which countries still missing?
@@ -184,6 +206,10 @@ rm(list=c("sd_moneydisc","sd_lenddisc","numeraire"))
 
 # #       Verify
 # interest[Country %in% eurozone,]
+
+setnames(interest,"Country","Country.Name")
+setkey(ATMcost, Country.Name); setkey(interest, Country.Name)
+
 
 summary(interest)
 

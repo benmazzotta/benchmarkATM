@@ -18,17 +18,21 @@ This paper outlines the variance in ATM costs worldwide. Absent primary data on 
 
 The following sections treat each cost in turn; followed by an explicit model for how the costs were calculated.
 
-## ATM count
-
-The World Bank estimates ATMs per capita, population and GDP per capita.
-
-```{r ATMdensity, fig.width=10, fig.height=6.1, echo=FALSE, warning=FALSE}
+```{r prelims, echo=FALSE, warnings=FALSE, message=FALSE}
 load("../data/current.Rdata")
 require(ggplot2)
 require(data.table)
 require(xtable)
 require(stargazer)
-ls()
+
+```
+
+
+## ATM count
+
+The World Bank estimates ATMs per capita, population and GDP per capita.
+
+```{r ATMdensity, fig.width=12, fig.height=8, echo=FALSE, warning=FALSE, results='hold'}
 
 ## ATMs in each country
 ##      Join the ATM density per capita to the population data
@@ -43,21 +47,30 @@ ATMcost <- ATMcost[,.SD, .SDcols=c("Country.Code","Country.Name","ATMper100k","e
 ##        Rename for convenience
 setnames(ATMcost, "estimate","population")
 ##        Calculate ATMs, total in the country
+cat("Generate estimates of ATMs in each country from ATM density.")
 ATMcost[,ATMs:=ATMper100k*population*10^-5]
-##        Summarize
-summary(ATMcost)
-ATMcost["USA",]
 
-##        Merge in the GDP per capita 5-year average
+
+##        Join GDP per capita 5-year average
+cat("Join a column for GDP per capita (Source: World Bank).")
 setkey(gdpcap, "Country.Code")
-tables()
+# tables()
 ATMcost <- ATMcost[gdpcap[,.SD, .SDcols=c("Country.Code","estimate")],]
 setnames(ATMcost, "estimate","GDPcap")
 
+##        Summarize
+cat("Here is a summary of population and estimated ATM counts. \n The USA numbers verify we are plausibly accurate.")
+summary(ATMcost)
+ATMcost["USA",]
+
+
 options("scipen"=5)
 
-qplot(ATMper100k, GDPcap, data=ATMcost, label=Country.Code, log="xy", geom="text")+labs(
-  title="ATM density versus GDP per capita \n Source: World Bank", x="ATMs per hundred thousand population", y="Gross domestic product per capita in US dollars at purchasing power parity (PPP)")
+qplot(GDPcap, ATMper100k, data=ATMcost, label=Country.Code, log="xy", geom="text")+labs(
+  title="ATM density versus GDP per capita \n Source: World Bank", y="ATMs per hundred thousand population", x="Gross domestic product per capita \n US dollars at purchasing power parity (PPP)")
+
+# plot01 <- ggplot(ATMcost, aes(GDPcap, ATMper100k, label=Country.Code))
+# plot01 + geom_text(size=4, log="x")
 
 ```
 
@@ -73,13 +86,13 @@ setkey(ATMcost, "Country.Code"); setkey(ppplevel, "Country.Code")
 
 # ATMcostvars <- names(ATMcost)
 # rm(ATMcostvars)
-tables()
+# tables()
 ATMcost <- ATMcost[ppplevel[,.SD, .SDcols=c("Country.Code","estimate")],]
 setnames(ATMcost, "estimate", "c_maint")
 
 ##        Now c_maint gives the PPP level ratio of each country relative to the USA.
 
-tables()
+# tables()
 
 # ##      Check USA is the numeraire
 # ATMcost["United States",]
@@ -97,9 +110,9 @@ The cost of funds is calculated on a per-machine basis. The per-machine cost is 
 ## Interest multiplier
 ##      Model: Multiply USA interest cost component by interest rate ratio
 
-tables()
+# tables()
 
-setnames(interest,"Country","Country.Name")
+# setnames(interest,"Country","Country.Name")
 # setkey(ATMcost, Country.Name); setkey(interest, Country.Name)
 
 names(interest)
@@ -124,7 +137,7 @@ names(ATMcost);names(interest)
 setnames(ATMcost, "estimate", "c_int")
 
 
-tables()
+# tables()
 
 # dim(ATMcost)
 # dim(ppplevel)
@@ -146,7 +159,7 @@ We treat all fleets as equally expensive on a capital expenditure basis.
 Using the model below, we calculate per-machine maintenance costs worldwide. The basic inputs to the model are USA costs per machine for maintenance, funds, and capital expense. The output is a per-machine cost worldwide; from which we calculate the national cost worldwide. 
 
 
-```{r ATMcostestimates, fig.width=8, fig.height=4.5, warnings=F}
+```{r ATMcostestimates, fig.width=12, fig.height=6.7, warnings=F}
 ATMusa <- data.table("United States", 1290.05, 971.41, 81.27, 237.37)
 names(ATMusa) <- c("Country.Name", "cost_permo", "cost_maint", "cost_funds", "cost_capex")
 attr(ATMusa, "table.label") <- "Cost of a single ATM in the United States in 2012, based on US GDP deflator and ABA Fact Sheet via Texas Bankers Association."
@@ -164,39 +177,91 @@ ATMcost[,gamma_capex := ATMusa$cost_capex]
 ATMcost[,gamma_sum := gamma_maint + gamma_int + gamma_capex]
 summary(ATMcost)
 
-qplot(GDPcap, gamma_sum, data=ATMcost, geom="text", label=Country.Code, log="xy")+
-  labs(title="Unit Cost of ATM Maintenance", x="GDP per capita", y="Modeled monthly cost per ATM, USD")
 
 ##    Calculate national fleet costs
 ATMcost[,national := gamma_sum * ATMs]
 summary(ATMcost)
+
+```
+
+### Findings 
+
+These are scatterplots of the national unit costs and national fleet costs of ATM.
+
+```{r ATMcostscatterplots, fig.width=12, fig.height=6.7, echo=FALSE, warning=FALSE}
+
+qplot(GDPcap, gamma_sum, data=ATMcost, geom="text", label=Country.Code, log="xy")+
+  labs(title="Unit Cost of ATM Maintenance", x="GDP per capita", y="Modeled monthly cost per ATM, USD")
+
 
 qplot(population, national, data=ATMcost, geom="text", label=Country.Code, log="xy")+ 
   labs(title="National Cost of ATM maintenance", x="Population",y="National cost of ATMs")
 
 ```
 
-And here are the rank orderings by cost.
 
-```{r rankorerbycost, results='asis'}
 
-## Rank order by ATM unit cost
+And here are the rank orderings by cost. See Tables  \ref{tab:top20unitcost}, \ref{tab:bottom20unitcost}, \ref{tab:top20fleetcost}, \ref{tab:bottom20fleetcost}, \ref{tab:atmunitcost}, and \ref{tab:ranknatlcost}.
+
+```{r rankorderbycost, results='asis', warning=FALSE, echo=FALSE}
+
+## Top 20 most expensive countries to operate
+
 setkey(ATMcost, gamma_sum)
-tab1 <- xtable(ATMcost[!is.na(gamma_sum),c("Country.Name","Country.Code","gamma_sum"), with=F], label="tab:atmunitcost", caption="Unit cost of ATM Operations")
-print(tab1, tabular.environment="longtable")
+tab04 <- tail(ATMcost[complete.cases(ATMcost), c("Country.Name","GDPcap","gamma_sum"), with=F], 20)
+stargazer(tab04,summary = FALSE, title="Highest Unit Operating Costs", label="tab:top20unitcost", header=F, digits=0)
 
-## Rank order by total fleet cost
+## Top 20 least expensive countries to operate
+setkey(ATMcost, gamma_sum)
+tab05 <- head(ATMcost[complete.cases(ATMcost), c("Country.Name","GDPcap","gamma_sum"), with=F], 20)
+stargazer(tab05,summary = FALSE, title="Lowest Unit Operating Costs", label="tab:bottom20unitcost", header=F, digits=0)
+
+
+
+## Top 20 most expensive fleets
 setkey(ATMcost, national)
-tab2 <- xtable(ATMcost[!is.na(national),c("Country.Name","Country.Code","national"),with=F], caption = "Rank order of national ATM fleet cost", label="tab:ranknatlcost")
-print(tab2, tabular.environment="longtable")
+tab06 <- tail(ATMcost[complete.cases(ATMcost), c("Country.Name","GDPcap","national"), with=F], 20)
+stargazer(tab06,summary = FALSE, title="Highest Fleet Operating Costs", label="tab:top20fleetcost", header=F, digits=0)
+
+
+## Top 20 least expensive fleets
+setkey(ATMcost, national)
+tab07 <- head(ATMcost[complete.cases(ATMcost), c("Country.Name","GDPcap","national"), with=F], 20)
+stargazer(tab07,summary = FALSE, title="Lowest Fleet Operating Costs", label="tab:bottom20fleetcost", header=F, digits=0)
+
+
 ```
 
 ## Countries studied
 
+A bit of housekeeping. These are the countries we studied. And I'm adding two variables to convert population and national ATM cost to "millions".
+
 ```{r census}
 
 setkey(ATMcost, Country.Name)
-ATMcost$Country.Name
+ATMcost[complete.cases(ATMcost), Country.Name]
+
+
+# Convert population to millions
+ATMcost[,pop_MM := population/10^6]
+
+# Convert national cost to millions
+ATMcost[,ATM_MM := national/10^6]
+
+```
+
+And the full list of country estimates is here.
+
+```{r rankordercomplete, echo=FALSE, results='asis',warning=FALSE}
+## Rank order by ATM unit cost
+setkey(ATMcost, gamma_sum)
+tab01 <- xtable(ATMcost[!is.na(gamma_sum),c("Country.Name","Country.Code","gamma_sum"), with=F], label="tab:atmunitcost", caption="Unit cost of ATM Operations")
+print(tab01, tabular.environment="longtable")
+
+## Rank order by total fleet cost
+setkey(ATMcost, national)
+tab02 <- xtable(ATMcost[!is.na(national),c("Country.Name","Country.Code","national"),with=F], caption = "Rank order of national ATM fleet cost", label="tab:ranknatlcost")
+print(tab02, tabular.environment="longtable")
 
 ```
 
@@ -220,7 +285,7 @@ Operating expenses are assumed to be proportional to the price level in each cou
 
 ### Base year cost
 
-Base year costs were $1194. To calculate 2012 price: use the GDP deflator for 2012. \footnote{Federal Reserve Economic Data (FRED). Gross Domestic Product: Implicit Price Deflator, Index 2009=100, Annual, Seasonally Adjusted. Available at (http://research.stlouisfed.org/fred2)}.
+Base year costs were $1194. To calculate 2012 price: use the GDP deflator for 2012.\footnote{Federal Reserve Economic Data (FRED). Gross Domestic Product: Implicit Price Deflator, Index 2009=100, Annual, Seasonally Adjusted. Available at (http://research.stlouisfed.org/fred2)}
   
 Measure | Value 
 --- | ---
@@ -229,8 +294,34 @@ GDP deflator ratio | 1.0804
 Cost in 2012, estimated | $1290.05
 
 
+## Stargazer tables
 
+These are the summary statistics from the ATM Costs dataset; and a covariance matrix for unit and national costs with GDP per capita. The stargazer package makes them prettier. See Tables \ref{tab:ATMcost_summary} and \ref{tab:ATMcost_cormat}.
+
+```{r summary-stargazer, results='asis', echo=FALSE}
+
+stargazer(ATMcost, title="Summary Statistics for ATM Costs Worldwide",label="tab:ATMcost_summary", header=F)
+tab03 <- cor(ATMcost[complete.cases(ATMcost),.SD, .SDcols=c("GDPcap","gamma_maint","gamma_int","gamma_sum","national")])
+stargazer(tab03, title="Correlation Matrix for ATM Costs", label="tab:ATMcost_cormat", header=F)
+
+```
 
 ---
+
+## Cleaning up
+
+
+### Save the dataset
+After cleaning up the West Africa exchange rates, save the output file in the data directory.
+
+```{r filedata}
+
+save(ATMcost, file="ATMcost.Rda")
+save.image("archive.20140930.Rdata")
+
+```
+
+
+### About the author
 
 > Ben Mazzotta is a postdoc at the Institute for Business in the Global Context ([IBGC](http://fletcher.tufts.edu/ibgc)).
