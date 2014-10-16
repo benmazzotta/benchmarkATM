@@ -18,6 +18,8 @@ This paper outlines the variance in ATM costs worldwide. Absent primary data on 
 
 The following sections treat each cost in turn; followed by an explicit model for how the costs were calculated.
 
+\tableofcontents
+
 ```{r prelims, echo=FALSE, warnings=FALSE, message=FALSE}
 load("../data/current.Rdata")
 require(ggplot2)
@@ -316,8 +318,8 @@ After cleaning up the West Africa exchange rates, save the output file in the da
 
 ```{r filedata}
 
-save(ATMcost, file="ATMcost.Rda")
-save.image("archive.20140930.Rdata")
+save(ATMcost, file="../data/ATMcost.Rda")
+save.image("../data/archive.20140930.Rdata")
 
 ```
 
